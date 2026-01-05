@@ -31,3 +31,5 @@ enum Currency: String, CaseIterable {
     case usd = "$"
     case eur = "€"
 }
+
+

@@ -1,6 +1,6 @@
-import SwiftUI
+/*import SwiftUI
 
-struct FancyToastView: View {
+struct FFancyToastView: View {
     var message: String
     var themeColor: Color
     var timeLeft: Int      // Dışarıdan gelen kalan süre
@@ -58,3 +58,4 @@ struct FancyToastView: View {
         .padding(.horizontal, 20)
     }
 }
+*/

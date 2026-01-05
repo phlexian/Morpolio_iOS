@@ -1,24 +1,61 @@
 import SwiftUI
 import SwiftData
 
+// Focus yönetimi için enum
+enum AdderField {
+    case symbol
+    case quantity
+}
+
 // --- 1. HİSSE EKLEME ---
 struct StockAdderScreen: View {
     @Environment(\.modelContext) private var context
-    var themeColor: Color // Parametre
-    @State private var symbol = ""
-    @State private var quantity = ""
+    var themeColor: Color
+    private let api = APIService()
+    @State private var symbol = ""; @State private var quantity = ""; @State private var isLoading = false; @State private var errorMsg: String?
+    @State private var showDuplicateAlert = false; @State private var existingItem: Stock?; @State private var pendingPrice: Double = 0.0
     
+    @Environment(\.dismiss) private var dismiss
+    
+    // YENİ: Focus State
+    @FocusState private var focusedField: AdderField?
+    
+    var isFormValid: Bool { !symbol.isEmpty && !quantity.isEmpty }
+
     var body: some View {
-        StandardAdderLayout(title: "Hisse Ekle", themeColor: themeColor, onSave: save) {
-            CustomTextField(title: "Hisse Kodu (Örn: THYAO)", text: $symbol)
-            CustomTextField(title: "Adet", text: $quantity, isNumber: true)
+        StandardAdderLayout(title: "Hisse Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
+            
+            AdderTextField(title: "Hisse Kodu (Örn: THYAO)", text: $symbol, submitLabel: .next) {
+                focusedField = .quantity // Enter basınca alta geç
+            }
+            .focused($focusedField, equals: .symbol)
+            
+            AdderTextField(title: "Adet", text: $quantity, isNumber: true, submitLabel: .done) {
+                focusedField = nil // Klavye kapat
+            }
+            .focused($focusedField, equals: .quantity)
         }
+        .alert("Bu Hisse Zaten Var", isPresented: $showDuplicateAlert) {
+            Button("İptal", role: .cancel) { }
+            Button("Üzerine Ekle") { updateExisting() }
+        } message: { Text("Portföyünüzde \(existingItem?.symbol ?? "") bulunuyor. Üzerine eklemek ister misiniz?") }
     }
     
-    func save() {
-        guard !symbol.isEmpty, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
-        let stock = Stock(symbol: symbol.uppercased(), quantity: qty, currentPrice: 0.0)
-        context.insert(stock)
+    // ... processAddition ve updateExisting aynı (Uppercased dışarıda olacak şekilde) ...
+    func processAddition() async {
+        errorMsg = nil; guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        let searchSymbol = symbol.uppercased()
+        isLoading = true
+        if let price = await api.fetchStockPrice(symbol: searchSymbol) {
+            pendingPrice = price
+            let fetchDesc = FetchDescriptor<Stock>(predicate: #Predicate { $0.symbol == searchSymbol })
+            if let existing = try? context.fetch(fetchDesc).first { existingItem = existing; showDuplicateAlert = true }
+            else { context.insert(Stock(symbol: searchSymbol, quantity: qty, currentPrice: price)); dismiss() }
+        } else { errorMsg = "Hisse bulunamadı." }; isLoading = false
+    }
+    func updateExisting() {
+        guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        item.quantity += qty; item.currentPrice = pendingPrice; dismiss()
     }
 }
 
@@ -26,150 +63,145 @@ struct StockAdderScreen: View {
 struct CryptoAdderScreen: View {
     @Environment(\.modelContext) private var context
     var themeColor: Color
-    @State private var symbol = ""
-    @State private var quantity = ""
+    private let api = APIService()
+    @State private var symbol = ""; @State private var quantity = ""; @State private var isLoading = false; @State private var errorMsg: String?
+    @State private var showDuplicateAlert = false; @State private var existingItem: Crypto?; @State private var pendingPrice: Double = 0.0
+    @Environment(\.dismiss) private var dismiss
     
+    @FocusState private var focusedField: AdderField?
+    var isFormValid: Bool { !symbol.isEmpty && !quantity.isEmpty }
+
     var body: some View {
-        StandardAdderLayout(title: "Kripto Ekle", themeColor: themeColor, onSave: save) {
-            CustomTextField(title: "Sembol (Örn: BTC)", text: $symbol)
-            CustomTextField(title: "Adet", text: $quantity, isNumber: true)
+        StandardAdderLayout(title: "Kripto Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
+            AdderTextField(title: "Sembol (Örn: BTC)", text: $symbol, submitLabel: .next) { focusedField = .quantity }
+                .focused($focusedField, equals: .symbol)
+            AdderTextField(title: "Adet", text: $quantity, isNumber: true, submitLabel: .done) { focusedField = nil }
+                .focused($focusedField, equals: .quantity)
         }
+        .alert("Bu Varlık Zaten Var", isPresented: $showDuplicateAlert) { Button("İptal", role: .cancel) { }; Button("Üzerine Ekle") { updateExisting() } } message: { Text("Portföyünüzde mevcut. Üzerine eklensin mi?") }
     }
     
-    func save() {
-        guard !symbol.isEmpty, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
-        let crypto = Crypto(symbol: symbol.uppercased(), quantity: qty, currentPrice: 0.0)
-        context.insert(crypto)
+    func processAddition() async {
+        errorMsg = nil; guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        let searchSymbol = symbol.uppercased()
+        isLoading = true
+        if let price = await api.fetchCryptoPrice(symbol: searchSymbol) {
+            pendingPrice = price
+            let fetchDesc = FetchDescriptor<Crypto>(predicate: #Predicate { $0.symbol == searchSymbol })
+            if let existing = try? context.fetch(fetchDesc).first { existingItem = existing; showDuplicateAlert = true }
+            else { context.insert(Crypto(symbol: searchSymbol, quantity: qty, currentPrice: price)); dismiss() }
+        } else { errorMsg = "Varlık bulunamadı." }; isLoading = false
     }
+    func updateExisting() { guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }; item.quantity += qty; item.currentPrice = pendingPrice; dismiss() }
 }
 
 // --- 3. FON EKLEME ---
 struct FundAdderScreen: View {
     @Environment(\.modelContext) private var context
     var themeColor: Color
-    @State private var symbol = ""
-    @State private var quantity = ""
+    private let api = APIService()
+    @State private var symbol = ""; @State private var quantity = ""; @State private var isLoading = false; @State private var errorMsg: String?
+    @State private var showDuplicateAlert = false; @State private var existingItem: Fund?; @State private var pendingPrice: Double = 0.0
+    @Environment(\.dismiss) private var dismiss
     
+    @FocusState private var focusedField: AdderField?
+    var isFormValid: Bool { !symbol.isEmpty && !quantity.isEmpty }
+
     var body: some View {
-        StandardAdderLayout(title: "Fon Ekle", themeColor: themeColor, onSave: save) {
-            CustomTextField(title: "Fon Kodu (Örn: TTE)", text: $symbol)
-            CustomTextField(title: "Adet", text: $quantity, isNumber: true)
+        StandardAdderLayout(title: "Fon Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
+            AdderTextField(title: "Fon Kodu (Örn: TTE)", text: $symbol, submitLabel: .next) { focusedField = .quantity }
+                .focused($focusedField, equals: .symbol)
+            AdderTextField(title: "Adet", text: $quantity, isNumber: true, submitLabel: .done) { focusedField = nil }
+                .focused($focusedField, equals: .quantity)
         }
+        .alert("Bu Fon Zaten Var", isPresented: $showDuplicateAlert) { Button("İptal", role: .cancel) { }; Button("Üzerine Ekle") { updateExisting() } } message: { Text("Portföyünüzde mevcut. Üzerine eklensin mi?") }
     }
     
-    func save() {
-        guard !symbol.isEmpty, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
-        let fund = Fund(symbol: symbol.uppercased(), quantity: qty, currentPrice: 0.0)
-        context.insert(fund)
+    func processAddition() async {
+        errorMsg = nil; guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        let searchSymbol = symbol.uppercased()
+        isLoading = true
+        if let price = await api.fetchFundPrice(symbol: searchSymbol) {
+            pendingPrice = price
+            let fetchDesc = FetchDescriptor<Fund>(predicate: #Predicate { $0.symbol == searchSymbol })
+            if let existing = try? context.fetch(fetchDesc).first { existingItem = existing; showDuplicateAlert = true }
+            else { context.insert(Fund(symbol: searchSymbol, quantity: qty, currentPrice: price)); dismiss() }
+        } else { errorMsg = "Fon bulunamadı." }; isLoading = false
     }
+    func updateExisting() { guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }; item.quantity += qty; item.currentPrice = pendingPrice; dismiss() }
 }
 
 // --- 4. MADEN EKLEME ---
 struct ElementAdderScreen: View {
     @Environment(\.modelContext) private var context
     var themeColor: Color
-    @State private var selectedElement = "GLD"
-    @State private var quantity = ""
+    private let api = APIService()
+    @State private var selectedElement = "GLD"; @State private var quantity = ""; @State private var isLoading = false; @State private var errorMsg: String?
+    @State private var showDuplicateAlert = false; @State private var existingItem: Element?; @State private var pendingPrice: Double = 0.0
+    @Environment(\.dismiss) private var dismiss
     
-    // (Gr) ifadesi kaldırıldı
+    @FocusState private var focusedField: AdderField?
+    var isFormValid: Bool { !quantity.isEmpty }
     let elements = [("GLD", "Altın"), ("SLV", "Gümüş"), ("PLT", "Platin")]
-    
+
     var body: some View {
-        StandardAdderLayout(title: "Maden Ekle", themeColor: themeColor, onSave: save) {
-            // Büyük Fontlu Özel Seçim
+        StandardAdderLayout(title: "Maden Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
             CustomSegmentedPicker(options: elements, selection: $selectedElement, color: themeColor)
-            
-            CustomTextField(title: "Adet (Gram)", text: $quantity, isNumber: true)
+            AdderTextField(title: "Adet (Gram)", text: $quantity, isNumber: true, submitLabel: .done) { focusedField = nil }
+                .focused($focusedField, equals: .quantity)
         }
+        .alert("Maden Zaten Var", isPresented: $showDuplicateAlert) { Button("İptal", role: .cancel) { }; Button("Üzerine Ekle") { updateExisting() } } message: { Text("Mevcut gramajın üzerine eklensin mi?") }
     }
     
-    func save() {
+    func processAddition() async {
         guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
-        let element = Element(symbol: selectedElement, quantity: qty, currentPrice: 0.0)
-        context.insert(element)
+        isLoading = true
+        let searchSymbol = selectedElement
+        if let price = await api.fetchElementPrice(symbol: searchSymbol) {
+            pendingPrice = price
+            let fetchDesc = FetchDescriptor<Element>(predicate: #Predicate { $0.symbol == searchSymbol })
+            if let existing = try? context.fetch(fetchDesc).first { existingItem = existing; showDuplicateAlert = true }
+            else { context.insert(Element(symbol: searchSymbol, quantity: qty, currentPrice: price)); dismiss() }
+        } else { errorMsg = "Fiyat alınamadı." }; isLoading = false
     }
+    func updateExisting() { guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }; item.quantity += qty; item.currentPrice = pendingPrice; dismiss() }
 }
 
 // --- 5. NAKİT EKLEME ---
 struct CashAdderScreen: View {
     @Environment(\.modelContext) private var context
     var themeColor: Color
-    @State private var selectedCurrency = "TRY"
-    @State private var quantity = ""
+    private let currencyApi = CurrencyService()
+    @State private var selectedCurrency = "TRY"; @State private var quantity = ""; @State private var isLoading = false; @State private var errorMsg: String?
+    @State private var showDuplicateAlert = false; @State private var existingItem: Cash?; @State private var pendingPrice: Double = 0.0
+    @Environment(\.dismiss) private var dismiss
     
-    // Semboller kullanıldı
+    @FocusState private var focusedField: AdderField?
+    var isFormValid: Bool { !quantity.isEmpty }
     let currencies = [("TRY", "₺"), ("USD", "$"), ("EUR", "€")]
-    
+
     var body: some View {
-        StandardAdderLayout(title: "Nakit Ekle", themeColor: themeColor, onSave: save) {
-            // Büyük Fontlu Özel Seçim
+        StandardAdderLayout(title: "Nakit Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
             CustomSegmentedPicker(options: currencies, selection: $selectedCurrency, color: themeColor)
-            
-            CustomTextField(title: "Miktar", text: $quantity, isNumber: true)
+            AdderTextField(title: "Miktar", text: $quantity, isNumber: true, submitLabel: .done) { focusedField = nil }
+                .focused($focusedField, equals: .quantity)
         }
+        .alert("Para Birimi Zaten Var", isPresented: $showDuplicateAlert) { Button("İptal", role: .cancel) { }; Button("Üzerine Ekle") { updateExisting() } } message: { Text("Mevcut bakiyenin üzerine eklensin mi?") }
     }
     
-    func save() {
+    func processAddition() async {
         guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
-        let cash = Cash(symbol: selectedCurrency, quantity: qty, currentPrice: 1.0)
-        context.insert(cash)
-    }
-}
-
-// MARK: - YARDIMCI BİLEŞENLER
-
-// Standart Input
-struct CustomTextField: View {
-    let title: String
-    @Binding var text: String
-    var isNumber: Bool = false
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            TextField("", text: $text)
-                .keyboardType(isNumber ? .decimalPad : .default)
-                .padding()
-                .background(Color(uiColor: .secondarySystemBackground))
-                .cornerRadius(10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                )
+        isLoading = true; var price = 1.0
+        if selectedCurrency != "TRY" {
+            if let rates = await currencyApi.fetchRates() { price = (selectedCurrency == "USD") ? rates.usd : rates.eur }
+            else { errorMsg = "Kur alınamadı."; isLoading = false; return }
         }
+        pendingPrice = price
+        let searchSymbol = selectedCurrency
+        let fetchDesc = FetchDescriptor<Cash>(predicate: #Predicate { $0.symbol == searchSymbol })
+        if let existing = try? context.fetch(fetchDesc).first { existingItem = existing; showDuplicateAlert = true }
+        else { context.insert(Cash(symbol: searchSymbol, quantity: qty, currentPrice: price)); dismiss() }
+        isLoading = false
     }
-}
-
-// Büyük Fontlu Özel Segmented Picker
-struct CustomSegmentedPicker: View {
-    let options: [(id: String, label: String)]
-    @Binding var selection: String
-    let color: Color
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(options, id: \.id) { option in
-                Button(action: {
-                    withAnimation(.spring()) {
-                        selection = option.id
-                    }
-                }) {
-                    Text(option.label)
-                        .font(.title2) // BÜYÜK FONT İSTEĞİ
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(selection == option.id ? color : Color.clear)
-                        .foregroundStyle(selection == option.id ? .white : .primary)
-                }
-            }
-        }
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(color.opacity(0.3), lineWidth: 1)
-        )
-        .padding(.bottom, 10)
-    }
+    func updateExisting() { guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }; item.quantity += qty; item.currentPrice = pendingPrice; dismiss() }
 }
