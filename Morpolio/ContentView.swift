@@ -454,3 +454,4 @@ struct CashListView: View {
         .sheet(item: $itemToUpdate) { item in StandardUpdateSheet(title: item.displayName, currentQuantity: item.quantity, themeColor: themeColor) { newQty in item.quantity = newQty } }
     }
 }
+//yedek
