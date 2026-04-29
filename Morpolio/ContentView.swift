@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - 1. YARDIMCI YAPILAR (Undo İşlemi İçin)
+// MARK: - 1. YARDIMCI YAPILAR
 enum DeletedItemWrapper {
     case stock(symbol: String, quantity: Double, price: Double, purchasePrice: Double)
     case crypto(symbol: String, quantity: Double, price: Double, purchasePrice: Double)
@@ -10,13 +10,54 @@ enum DeletedItemWrapper {
     case cash(symbol: String, quantity: Double, price: Double, purchasePrice: Double)
 }
 
-// MARK: - 2. PORTFOLIO LAYOUT (Standart Tasarım İskeleti)
-struct PortfolioLayout<Content: View>: View {
+// YENİ: "Kar/Zarar %" seçeneği eklendi
+enum SortOption: String, CaseIterable {
+    case name = "İsim"
+    case unitPrice = "Varlık Değeri"
+    case totalValue = "Portföy Değeri"
+    case profit = "Kar/Zarar"
+    case profitPercentage = "Kar/Zarar %"
+}
+
+struct SortMenuButton: View {
+    @Binding var selectedOption: SortOption
+    @Binding var isAscending: Bool
+    let themeColor: Color
+
+    var body: some View {
+        Menu {
+            Section("Sırala:") {
+                ForEach(SortOption.allCases, id: \.self) { option in
+                    Button {
+                        if selectedOption == option {
+                            isAscending.toggle()
+                        } else {
+                            selectedOption = option
+                            isAscending = false
+                        }
+                    } label: {
+                        if selectedOption == option {
+                            Label(option.rawValue, systemImage: isAscending ? "arrow.up" : "arrow.down")
+                        } else {
+                            Text(option.rawValue)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .fontWeight(.bold)
+                .foregroundStyle(themeColor)
+        }
+    }
+}
+
+// MARK: - 2. PORTFOLIO LAYOUT
+struct PortfolioLayout<Content: View, SortMenu: View>: View {
     let title: String
     let themeColor: Color
     let totalValue: Double
     
-    // Toplam Kar/Zarar değerleri
     var totalProfit: Double? = nil
     var profitPercentage: Double? = nil
     
@@ -26,6 +67,8 @@ struct PortfolioLayout<Content: View>: View {
     let isRefreshing: Bool
     let onRefresh: () async -> Void
     let onAdd: () -> Void
+    
+    @ViewBuilder let sortMenu: SortMenu
     @ViewBuilder let content: Content
     
     func convert(_ value: Double) -> Double {
@@ -64,7 +107,6 @@ struct PortfolioLayout<Content: View>: View {
                         }
                         .buttonStyle(.plain)
                         
-                        // Toplam Kar / Zarar Gösterimi
                         if let profit = totalProfit, let percentage = profitPercentage {
                             let convertedProfit = convert(profit)
                             let isProfit = convertedProfit >= 0
@@ -93,7 +135,9 @@ struct PortfolioLayout<Content: View>: View {
                     .disabled(isRefreshing)
                 }
                 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    sortMenu
+                    
                     Button(action: onAdd) {
                         Image(systemName: "plus")
                             .fontWeight(.bold)
@@ -153,13 +197,28 @@ struct ContentView: View {
     @State private var undoTimer: Timer?
     @State private var timeLeft: Int = 5
     
+    @State private var stockSortOption: SortOption = .totalValue
+    @State private var stockSortAsc: Bool = false
+    
+    @State private var cryptoSortOption: SortOption = .totalValue
+    @State private var cryptoSortAsc: Bool = false
+    
+    @State private var fundSortOption: SortOption = .totalValue
+    @State private var fundSortAsc: Bool = false
+    
+    @State private var elementSortOption: SortOption = .totalValue
+    @State private var elementSortAsc: Bool = false
+    
+    @State private var cashSortOption: SortOption = .totalValue
+    @State private var cashSortAsc: Bool = false
+    
+    // Genel Toplam Hesaplamaları
     var totalStockValue: Double { stocks.reduce(0) { $0 + $1.totalValue } }
     var totalCryptoValue: Double { cryptos.reduce(0) { $0 + $1.totalValue } }
     var totalFundValue: Double { funds.reduce(0) { $0 + $1.totalValue } }
     var totalElementValue: Double { elements.reduce(0) { $0 + $1.totalValue } }
     var totalCashValue: Double { cashItems.reduce(0) { $0 + $1.totalValue } }
     
-    // Toplam Kar/Zarar Hesaplamaları
     var totalStockPurchaseValue: Double { stocks.reduce(0) { $0 + ($1.purchasePrice * $1.quantity) } }
     var totalStockProfit: Double { totalStockValue - totalStockPurchaseValue }
     var totalStockProfitPercentage: Double { totalStockPurchaseValue > 0 ? (totalStockProfit / totalStockPurchaseValue) * 100 : 0.0 }
@@ -180,6 +239,26 @@ struct ContentView: View {
     var totalCashProfit: Double { totalCashValue - totalCashPurchaseValue }
     var totalCashProfitPercentage: Double { totalCashPurchaseValue > 0 ? (totalCashProfit / totalCashPurchaseValue) * 100 : 0.0 }
     
+    // YENİ: Yüzde sıralaması için profitPct parametresi eklendi
+    func sortItems<T>(items: [T], option: SortOption, asc: Bool, name: (T) -> String, price: (T) -> Double, total: (T) -> Double, profit: (T) -> Double, profitPct: (T) -> Double) -> [T] {
+        items.sorted { a, b in
+            switch option {
+            case .name: return asc ? name(a) < name(b) : name(a) > name(b)
+            case .unitPrice: return asc ? price(a) < price(b) : price(a) > price(b)
+            case .totalValue: return asc ? total(a) < total(b) : total(a) > total(b)
+            case .profit: return asc ? profit(a) < profit(b) : profit(a) > profit(b)
+            case .profitPercentage: return asc ? profitPct(a) < profitPct(b) : profitPct(a) > profitPct(b)
+            }
+        }
+    }
+    
+    // Modellerdeki profitLossPercentage özelliği üzerinden yüzdeye göre sıralama yapılıyor
+    var sortedStocks: [Stock] { sortItems(items: stocks, option: stockSortOption, asc: stockSortAsc, name: { $0.symbol }, price: { $0.currentPrice }, total: { $0.totalValue }, profit: { $0.profitLossAmount }, profitPct: { $0.profitLossPercentage }) }
+    var sortedCryptos: [Crypto] { sortItems(items: cryptos, option: cryptoSortOption, asc: cryptoSortAsc, name: { $0.symbol }, price: { $0.currentPrice }, total: { $0.totalValue }, profit: { $0.profitLossAmount }, profitPct: { $0.profitLossPercentage }) }
+    var sortedFunds: [Fund] { sortItems(items: funds, option: fundSortOption, asc: fundSortAsc, name: { $0.symbol }, price: { $0.currentPrice }, total: { $0.totalValue }, profit: { $0.profitLossAmount }, profitPct: { $0.profitLossPercentage }) }
+    var sortedElements: [Element] { sortItems(items: elements, option: elementSortOption, asc: elementSortAsc, name: { $0.displayName }, price: { $0.currentPrice }, total: { $0.totalValue }, profit: { $0.profitLossAmount }, profitPct: { $0.profitLossPercentage }) }
+    var sortedCash: [Cash] { sortItems(items: cashItems, option: cashSortOption, asc: cashSortAsc, name: { $0.displayName }, price: { $0.currentPrice }, total: { $0.totalValue }, profit: { $0.profitLossAmount }, profitPct: { $0.profitLossPercentage }) }
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             Color(uiColor: .systemBackground).ignoresSafeArea()
@@ -194,8 +273,10 @@ struct ContentView: View {
                 .background(Color(uiColor: .systemBackground))
                 
                 TabView(selection: $selectedTab) {
-                    PortfolioLayout(title: "Hisseler", themeColor: AppTheme.stockColor, totalValue: totalStockValue, totalProfit: totalStockProfit, profitPercentage: totalStockProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingStock, onRefresh: refreshStocks, onAdd: { showStockAdder = true }) {
-                        StockListView(stocks: stocks, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.stockColor, onRefresh: refreshStocks, onDeleteRequest: { item in
+                    PortfolioLayout(title: "Hisseler", themeColor: AppTheme.stockColor, totalValue: totalStockValue, totalProfit: totalStockProfit, profitPercentage: totalStockProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingStock, onRefresh: refreshStocks, onAdd: { showStockAdder = true },
+                        sortMenu: { SortMenuButton(selectedOption: $stockSortOption, isAscending: $stockSortAsc, themeColor: AppTheme.stockColor) }
+                    ) {
+                        StockListView(stocks: sortedStocks, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.stockColor, onRefresh: refreshStocks, onDeleteRequest: { item in
                             activeCategory = .stock
                             handleDelete(message: "'\(item.symbol)' silindi!", type: .stock(symbol: item.symbol, quantity: item.quantity, price: item.currentPrice, purchasePrice: item.purchasePrice), itemToDelete: item)
                         })
@@ -203,8 +284,10 @@ struct ContentView: View {
                     .sheet(isPresented: $showStockAdder) { StockAdderScreen(themeColor: AppTheme.stockColor).presentationDetents([.fraction(0.6), .large]) }
                     .tabItem { Label("Hisse", systemImage: "chart.bar.xaxis") }.tag(0)
                     
-                    PortfolioLayout(title: "Kripto Varlıklar", themeColor: AppTheme.cryptoColor, totalValue: totalCryptoValue, totalProfit: totalCryptoProfit, profitPercentage: totalCryptoProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingCrypto, onRefresh: refreshCryptos, onAdd: { showCryptoAdder = true }) {
-                        CryptoListView(cryptos: cryptos, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.cryptoColor, onRefresh: refreshCryptos, onDeleteRequest: { item in
+                    PortfolioLayout(title: "Kripto Varlıklar", themeColor: AppTheme.cryptoColor, totalValue: totalCryptoValue, totalProfit: totalCryptoProfit, profitPercentage: totalCryptoProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingCrypto, onRefresh: refreshCryptos, onAdd: { showCryptoAdder = true },
+                        sortMenu: { SortMenuButton(selectedOption: $cryptoSortOption, isAscending: $cryptoSortAsc, themeColor: AppTheme.cryptoColor) }
+                    ) {
+                        CryptoListView(cryptos: sortedCryptos, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.cryptoColor, onRefresh: refreshCryptos, onDeleteRequest: { item in
                             activeCategory = .crypto
                             handleDelete(message: "'\(item.symbol)' silindi!", type: .crypto(symbol: item.symbol, quantity: item.quantity, price: item.currentPrice, purchasePrice: item.purchasePrice), itemToDelete: item)
                         })
@@ -212,8 +295,10 @@ struct ContentView: View {
                     .sheet(isPresented: $showCryptoAdder) { CryptoAdderScreen(themeColor: AppTheme.cryptoColor).presentationDetents([.fraction(0.6), .large]) }
                     .tabItem { Label("Kripto", systemImage: "bitcoinsign.circle") }.tag(1)
                     
-                    PortfolioLayout(title: "Yatırım Fonları", themeColor: AppTheme.fundColor, totalValue: totalFundValue, totalProfit: totalFundProfit, profitPercentage: totalFundProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingFund, onRefresh: refreshFunds, onAdd: { showFundAdder = true }) {
-                        FundListView(funds: funds, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.fundColor, onRefresh: refreshFunds, onDeleteRequest: { item in
+                    PortfolioLayout(title: "Yatırım Fonları", themeColor: AppTheme.fundColor, totalValue: totalFundValue, totalProfit: totalFundProfit, profitPercentage: totalFundProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingFund, onRefresh: refreshFunds, onAdd: { showFundAdder = true },
+                        sortMenu: { SortMenuButton(selectedOption: $fundSortOption, isAscending: $fundSortAsc, themeColor: AppTheme.fundColor) }
+                    ) {
+                        FundListView(funds: sortedFunds, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.fundColor, onRefresh: refreshFunds, onDeleteRequest: { item in
                             activeCategory = .fund
                             handleDelete(message: "'\(item.symbol)' silindi!", type: .fund(symbol: item.symbol, quantity: item.quantity, price: item.currentPrice, purchasePrice: item.purchasePrice), itemToDelete: item)
                         })
@@ -221,8 +306,10 @@ struct ContentView: View {
                     .sheet(isPresented: $showFundAdder) { FundAdderScreen(themeColor: AppTheme.fundColor).presentationDetents([.fraction(0.6), .large]) }
                     .tabItem { Label("Fon", systemImage: "building.columns.circle") }.tag(2)
                     
-                    PortfolioLayout(title: "Değerli Madenler", themeColor: AppTheme.elementColor, totalValue: totalElementValue, totalProfit: totalElementProfit, profitPercentage: totalElementProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingElement, onRefresh: refreshElements, onAdd: { showElementAdder = true }) {
-                        ElementListView(elements: elements, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.elementColor, onRefresh: refreshElements, onDeleteRequest: { item in
+                    PortfolioLayout(title: "Değerli Madenler", themeColor: AppTheme.elementColor, totalValue: totalElementValue, totalProfit: totalElementProfit, profitPercentage: totalElementProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingElement, onRefresh: refreshElements, onAdd: { showElementAdder = true },
+                        sortMenu: { SortMenuButton(selectedOption: $elementSortOption, isAscending: $elementSortAsc, themeColor: AppTheme.elementColor) }
+                    ) {
+                        ElementListView(elements: sortedElements, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.elementColor, onRefresh: refreshElements, onDeleteRequest: { item in
                             activeCategory = .element
                             handleDelete(message: "'\(item.displayName)' silindi!", type: .element(symbol: item.symbol, quantity: item.quantity, price: item.currentPrice, purchasePrice: item.purchasePrice), itemToDelete: item)
                         })
@@ -230,8 +317,10 @@ struct ContentView: View {
                     .sheet(isPresented: $showElementAdder) { ElementAdderScreen(themeColor: AppTheme.elementColor).presentationDetents([.fraction(0.6), .large]) }
                     .tabItem { Label("Maden", systemImage: "circle.hexagonpath.fill") }.tag(3)
                     
-                    PortfolioLayout(title: "Nakit Varlıklar", themeColor: AppTheme.cashColor, totalValue: totalCashValue, totalProfit: totalCashProfit, profitPercentage: totalCashProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingCash, onRefresh: refreshCash, onAdd: { showCashAdder = true }) {
-                        CashListView(cashItems: cashItems, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.cashColor, onRefresh: refreshCash, onDeleteRequest: { item in
+                    PortfolioLayout(title: "Nakit Varlıklar", themeColor: AppTheme.cashColor, totalValue: totalCashValue, totalProfit: totalCashProfit, profitPercentage: totalCashProfitPercentage, selectedCurrency: $selectedCurrency, exchangeRates: $exchangeRates, isCurrencyBusy: $isCurrencyBusy, isRefreshing: isRefreshingCash, onRefresh: refreshCash, onAdd: { showCashAdder = true },
+                        sortMenu: { SortMenuButton(selectedOption: $cashSortOption, isAscending: $cashSortAsc, themeColor: AppTheme.cashColor) }
+                    ) {
+                        CashListView(cashItems: sortedCash, currency: selectedCurrency, rates: exchangeRates, themeColor: AppTheme.cashColor, onRefresh: refreshCash, onDeleteRequest: { item in
                             activeCategory = .cash
                             handleDelete(message: "'\(item.displayName)' silindi!", type: .cash(symbol: item.symbol, quantity: item.quantity, price: item.currentPrice, purchasePrice: item.purchasePrice), itemToDelete: item)
                         })
@@ -355,7 +444,22 @@ struct CryptoListView: View {
             }
         }
         .listStyle(.insetGrouped).refreshable { await onRefresh() }
-        .sheet(item: $itemToUpdate) { crypto in QuantityUpdateSheet(symbol: crypto.symbol, currentQuantity: crypto.quantity, currentPurchasePrice: crypto.purchasePrice) { newQty, newPrice in crypto.quantity = newQty; crypto.purchasePrice = newPrice; try? context.save() }.presentationDetents([.fraction(0.4)]) }
+        .sheet(item: $itemToUpdate) { crypto in
+            // YENİ: Sheet'e orijinal fiyatı ve satın alınan döviz sembolünü yolluyoruz
+            QuantityUpdateSheet(symbol: crypto.symbol, currentQuantity: crypto.quantity, currentPurchasePrice: crypto.originalPurchasePrice, purchaseCurrency: crypto.purchaseCurrency) { newQty, newOriginalPrice in
+                crypto.quantity = newQty
+                crypto.originalPurchasePrice = newOriginalPrice
+                
+                // YENİ: Girilen yabancı dövizi TL karşılığına çevirip veritabanına yazıyoruz (Kar zarar hesabı için)
+                let multiplier: Double
+                if crypto.purchaseCurrency == "$" { multiplier = rates.usd }
+                else if crypto.purchaseCurrency == "€" { multiplier = rates.eur }
+                else { multiplier = 1.0 }
+                
+                crypto.purchasePrice = newOriginalPrice * multiplier
+                try? context.save()
+            }.presentationDetents([.fraction(0.4)])
+        }
     }
 }
 

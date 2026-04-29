@@ -6,7 +6,7 @@ struct PortfolioSummaryItem: Identifiable {
     var id: String { name }
     let name: String
     let value: Double
-    let cost: Double // YENİ: Alış Maliyeti eklendi
+    let cost: Double
     let color: Color
     var percentage: Double = 0.0
     let tabIndex: Int
@@ -18,6 +18,10 @@ struct HomeScreen: View {
     @Query private var funds: [Fund]
     @Query private var elements: [Element]
     @Query private var cashItems: [Cash]
+    
+    @Environment(\.modelContext) private var context
+    private let currencyService = CurrencyService()
+    private let apiService = APIService()
     
     @Namespace private var animation
     @State private var isTextVisible = false
@@ -34,10 +38,11 @@ struct HomeScreen: View {
     @State private var selectedCurrency: Currency = .tryCurrency
     @State private var exchangeRates: (usd: Double, eur: Double) = (1.0, 1.0)
     @State private var isCurrencyBusy = false
-    private let currencyService = CurrencyService()
     
-    // Toplam Hesaplamalar
+    @State private var updateTrigger: Int = 0 // Arayüzü zorla yenilemek için tetikleyici
+    
     var grandTotal: Double {
+        _ = updateTrigger
         let s = stocks.reduce(0) { $0 + $1.totalValue }
         let c = cryptos.reduce(0) { $0 + $1.totalValue }
         let f = funds.reduce(0) { $0 + $1.totalValue }
@@ -47,6 +52,7 @@ struct HomeScreen: View {
     }
     
     var grandTotalCost: Double {
+        _ = updateTrigger
         let s = stocks.reduce(0) { $0 + ($1.purchasePrice * $1.quantity) }
         let c = cryptos.reduce(0) { $0 + ($1.purchasePrice * $1.quantity) }
         let f = funds.reduce(0) { $0 + ($1.purchasePrice * $1.quantity) }
@@ -116,7 +122,6 @@ struct HomeScreen: View {
                                 }
                                 .buttonStyle(.plain).disabled(isCurrencyBusy)
                                 
-                                // YENİ: GENEL KAR / ZARAR EKLENDİ
                                 if grandTotalCost > 0 {
                                     let convertedProfit = convert(overallProfit)
                                     let isProfit = convertedProfit >= 0
@@ -129,7 +134,7 @@ struct HomeScreen: View {
                                 }
                             }
                             
-                            // B. AKORDİYON LİSTE (Kategori Kar/Zarar Eklendi)
+                            // B. AKORDİYON LİSTE (KARTLAR)
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 15) {
                                     ForEach(Array(portfolioList.enumerated()), id: \.element.id) { index, item in
@@ -139,7 +144,6 @@ struct HomeScreen: View {
                                                 
                                                 VStack(alignment: .leading, spacing: 4) {
                                                     Text(item.name).font(.title3).fontWeight(.semibold).foregroundStyle(.primary)
-                                                    // YENİ: Kategori Kar/Zarar Yüzdesi Eklendi
                                                     if item.cost > 0 {
                                                         let profitAmount = item.value - item.cost
                                                         let profitPct = (profitAmount / item.cost) * 100
@@ -169,6 +173,10 @@ struct HomeScreen: View {
                                 }
                                 .padding(.top, 10)
                                 .padding(.bottom, 20)
+                            }
+                            .scrollBounceBehavior(.always, axes: .vertical)
+                            .refreshable {
+                                await refreshAllData()
                             }
                         }
                         .transition(.opacity)
@@ -205,5 +213,74 @@ struct HomeScreen: View {
     func cycleCurrency() {
         switch selectedCurrency { case .tryCurrency: selectedCurrency = .usd; case .usd: selectedCurrency = .eur; case .eur: selectedCurrency = .tryCurrency }
         if selectedCurrency != .tryCurrency && exchangeRates == (1.0, 1.0) { Task { isCurrencyBusy = true; if let rates = await currencyService.fetchRates() { exchangeRates = rates }; isCurrencyBusy = false } }
+    }
+    
+    // MARK: - EŞZAMANLI (PARALEL) VE GÜVENLİ API İSTEKLERİ
+    @MainActor
+    func refreshAllData() async {
+        
+        // Önce sadece sembolleri topluyoruz (State'i veya objeleri bozmamak için)
+        let stockSymbols = stocks.map { $0.symbol }
+        let cryptoSymbols = cryptos.map { $0.symbol }
+        let fundSymbols = funds.map { $0.symbol }
+        let elementSymbols = elements.map { $0.symbol }
+        
+        // API bağlantılarını birer değişkene atıyoruz (Görevlerin içinde kullanabilmek için)
+        let api = apiService
+        let curApi = currencyService
+        
+        // 1. Döviz Kurlarını arka planda çek (Değişkene ata, State'e DEĞİL)
+        async let fetchedRates = curApi.fetchRates()
+        
+        // 2. Diğer tüm fiyatları paralel (aynı anda) çek
+        let fetchedPrices = await withTaskGroup(of: (String, String, Double).self) { group in
+            
+            for sym in stockSymbols {
+                group.addTask { if let p = await api.fetchStockPrice(symbol: sym) { return ("stock", sym, p) } else { return ("stock", sym, -1) } }
+            }
+            for sym in cryptoSymbols {
+                group.addTask { if let p = await api.fetchCryptoPrice(symbol: sym) { return ("crypto", sym, p) } else { return ("crypto", sym, -1) } }
+            }
+            for sym in fundSymbols {
+                group.addTask { if let p = await api.fetchFundPrice(symbol: sym) { return ("fund", sym, p) } else { return ("fund", sym, -1) } }
+            }
+            for sym in elementSymbols {
+                group.addTask { if let p = await api.fetchElementPrice(symbol: sym) { return ("element", sym, p) } else { return ("element", sym, -1) } }
+            }
+            
+            var results: [(String, String, Double)] = []
+            for await result in group {
+                if result.2 != -1 { results.append(result) }
+            }
+            return results
+        }
+        
+        let newRates = await fetchedRates
+        
+        // ==========================================
+        // İNDİRME İŞLEMLERİ BİTTİ. ŞİMDİ EKRANI GÜNCELLEYEBİLİRİZ!
+        // ==========================================
+        
+        if let rates = newRates {
+            exchangeRates = rates // Döviz kuru ekrana yansır
+            for item in cashItems {
+                if item.symbol == "USD" { item.currentPrice = rates.usd }
+                else if item.symbol == "EUR" { item.currentPrice = rates.eur }
+                else { item.currentPrice = 1.0 }
+            }
+        }
+        
+        // Hisseleri, kriptoları veritabanına yazıyoruz
+        for result in fetchedPrices {
+            let (type, sym, price) = result
+            if type == "stock" { if let s = stocks.first(where: { $0.symbol == sym }) { s.currentPrice = price } }
+            else if type == "crypto" { if let c = cryptos.first(where: { $0.symbol == sym }) { c.currentPrice = price } }
+            else if type == "fund" { if let f = funds.first(where: { $0.symbol == sym }) { f.currentPrice = price } }
+            else if type == "element" { if let e = elements.first(where: { $0.symbol == sym }) { e.currentPrice = price } }
+        }
+        
+        // Kaydedip ekranı zorla yeniden çizdiriyoruz
+        try? context.save()
+        updateTrigger += 1
     }
 }
