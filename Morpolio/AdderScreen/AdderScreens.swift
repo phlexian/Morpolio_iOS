@@ -1,13 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// Focus yönetimi için enum (Alış Fiyatı eklendi)
-enum AdderField {
-    case symbol
-    case quantity
-    case purchasePrice
-}
-
 // --- 1. HİSSE EKLEME ---
 struct StockAdderScreen: View {
     @Environment(\.modelContext) private var context
@@ -29,24 +22,46 @@ struct StockAdderScreen: View {
     @FocusState private var focusedField: AdderField?
     
     var isFormValid: Bool { !symbol.isEmpty && !quantity.isEmpty && !purchasePriceStr.isEmpty }
-
+    
     var body: some View {
         StandardAdderLayout(title: "Hisse Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
             
-            AdderTextField(title: "Hisse Kodu (Örn: THYAO)", text: $symbol, submitLabel: .next) {
-                focusedField = .quantity
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Hisse Kodu (Örn: THYAO)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $symbol)
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .symbol)
+                    .onSubmit { focusedField = .quantity }
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             }
-            .focused($focusedField, equals: .symbol)
             
-            AdderTextField(title: "Adet", text: $quantity, isNumber: true, submitLabel: .next) {
-                focusedField = .purchasePrice
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Adet").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $quantity)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .quantity)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             }
-            .focused($focusedField, equals: .quantity)
             
-            AdderTextField(title: "Alış Fiyatı (Maliyet)", text: $purchasePriceStr, isNumber: true, submitLabel: .done) {
-                focusedField = nil
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Alış Fiyatı (Maliyet)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $purchasePriceStr)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .purchasePrice)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             }
-            .focused($focusedField, equals: .purchasePrice)
         }
         .alert("Bu Hisse Zaten Var", isPresented: $showDuplicateAlert) {
             Button("İptal", role: .cancel) { }
@@ -69,7 +84,7 @@ struct StockAdderScreen: View {
                 showDuplicateAlert = true
             } else {
                 context.insert(Stock(symbol: searchSymbol, quantity: qty, currentPrice: price, purchasePrice: cost))
-                try? context.save() // HATA ÇÖZÜMÜ: Ekleme sonrası veritabanını zorla kaydet
+                try? context.save()
                 dismiss()
             }
         } else { errorMsg = "Hisse bulunamadı." }
@@ -89,7 +104,7 @@ struct StockAdderScreen: View {
         item.quantity = newTotalQuantity
         item.currentPrice = pendingPrice
         
-        try? context.save() // HATA ÇÖZÜMÜ: Güncelleme sonrası veritabanını zorla kaydet
+        try? context.save()
         dismiss()
     }
 }
@@ -119,28 +134,46 @@ struct CryptoAdderScreen: View {
     @FocusState private var focusedField: AdderField?
     
     var isFormValid: Bool { !symbol.isEmpty && !quantity.isEmpty && !purchasePriceStr.isEmpty }
-
+    
     var body: some View {
         StandardAdderLayout(title: "Kripto Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
-            AdderTextField(title: "Sembol (Örn: BTC)", text: $symbol, submitLabel: .next) { focusedField = .quantity }
-                .focused($focusedField, equals: .symbol)
             
-            AdderTextField(title: "Adet", text: $quantity, isNumber: true, submitLabel: .next) { focusedField = .purchasePrice }
-                .focused($focusedField, equals: .quantity)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Sembol (Örn: BTC)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $symbol)
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .symbol)
+                    .onSubmit { focusedField = .quantity }
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
+            
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Adet").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $quantity)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .quantity)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
             
             VStack(alignment: .leading, spacing: 5) {
                 Text("Alış Fiyatı (Maliyet)").font(.caption).foregroundStyle(.secondary)
-                
                 HStack(spacing: 12) {
                     TextField("", text: $purchasePriceStr)
-                        .keyboardType(.numbersAndPunctuation)
-                        .submitLabel(.done)
-                        .onSubmit { focusedField = nil }
-                        .padding()
+                        .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .purchasePrice)
+                        .frame(height: 50)
+                        .padding(.horizontal)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                        .focused($focusedField, equals: .purchasePrice)
                     
                     Button(action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -153,7 +186,7 @@ struct CryptoAdderScreen: View {
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundStyle(.white)
-                            .frame(width: 54, height: 54)
+                            .frame(width: 50, height: 50)
                             .background(themeColor)
                             .clipShape(Circle())
                             .shadow(color: themeColor.opacity(0.4), radius: 4, x: 0, y: 2)
@@ -194,7 +227,7 @@ struct CryptoAdderScreen: View {
                 showDuplicateAlert = true
             } else {
                 context.insert(Crypto(symbol: searchSymbol, quantity: qty, currentPrice: price, purchasePrice: finalCostInTRY, originalPurchasePrice: enteredCost, purchaseCurrency: selectedCostCurrency))
-                try? context.save() // HATA ÇÖZÜMÜ
+                try? context.save()
                 dismiss()
             }
         } else { errorMsg = "Varlık bulunamadı." }
@@ -217,7 +250,7 @@ struct CryptoAdderScreen: View {
         item.quantity = newTotalQuantity
         item.currentPrice = pendingPrice
         
-        try? context.save() // HATA ÇÖZÜMÜ
+        try? context.save()
         dismiss()
     }
 }
@@ -242,17 +275,46 @@ struct FundAdderScreen: View {
     @FocusState private var focusedField: AdderField?
     
     var isFormValid: Bool { !symbol.isEmpty && !quantity.isEmpty && !purchasePriceStr.isEmpty }
-
+    
     var body: some View {
         StandardAdderLayout(title: "Fon Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
-            AdderTextField(title: "Fon Kodu (Örn: TTE)", text: $symbol, submitLabel: .next) { focusedField = .quantity }
-                .focused($focusedField, equals: .symbol)
             
-            AdderTextField(title: "Adet", text: $quantity, isNumber: true, submitLabel: .next) { focusedField = .purchasePrice }
-                .focused($focusedField, equals: .quantity)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Fon Kodu (Örn: TTE)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $symbol)
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .symbol)
+                    .onSubmit { focusedField = .quantity }
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
             
-            AdderTextField(title: "Alış Fiyatı (Maliyet)", text: $purchasePriceStr, isNumber: true, submitLabel: .done) { focusedField = nil }
-                .focused($focusedField, equals: .purchasePrice)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Adet").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $quantity)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .quantity)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
+            
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Alış Fiyatı (Maliyet)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $purchasePriceStr)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .purchasePrice)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
         }
         .alert("Bu Fon Zaten Var", isPresented: $showDuplicateAlert) {
             Button("İptal", role: .cancel) { }
@@ -275,7 +337,7 @@ struct FundAdderScreen: View {
                 showDuplicateAlert = true
             } else {
                 context.insert(Fund(symbol: searchSymbol, quantity: qty, currentPrice: price, purchasePrice: cost))
-                try? context.save() // HATA ÇÖZÜMÜ
+                try? context.save()
                 dismiss()
             }
         } else { errorMsg = "Fon bulunamadı." }
@@ -295,7 +357,7 @@ struct FundAdderScreen: View {
         item.quantity = newTotalQuantity
         item.currentPrice = pendingPrice
         
-        try? context.save() // HATA ÇÖZÜMÜ
+        try? context.save()
         dismiss()
     }
 }
@@ -321,16 +383,35 @@ struct ElementAdderScreen: View {
     
     var isFormValid: Bool { !quantity.isEmpty && !purchasePriceStr.isEmpty }
     let elements = [("GLD", "Altın"), ("SLV", "Gümüş"), ("PLT", "Platin")]
-
+    
     var body: some View {
         StandardAdderLayout(title: "Maden Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
+            
             CustomSegmentedPicker(options: elements, selection: $selectedElement, color: themeColor)
             
-            AdderTextField(title: "Adet (Gram)", text: $quantity, isNumber: true, submitLabel: .next) { focusedField = .purchasePrice }
-                .focused($focusedField, equals: .quantity)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Adet (Gram)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $quantity)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .quantity)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
             
-            AdderTextField(title: "Alış Fiyatı (Gram Maliyeti)", text: $purchasePriceStr, isNumber: true, submitLabel: .done) { focusedField = nil }
-                .focused($focusedField, equals: .purchasePrice)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Alış Fiyatı (Gram Maliyeti)").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $purchasePriceStr)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .purchasePrice)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+            }
         }
         .alert("Maden Zaten Var", isPresented: $showDuplicateAlert) {
             Button("İptal", role: .cancel) { }
@@ -353,7 +434,7 @@ struct ElementAdderScreen: View {
                 showDuplicateAlert = true
             } else {
                 context.insert(Element(symbol: searchSymbol, quantity: qty, currentPrice: price, purchasePrice: cost))
-                try? context.save() // HATA ÇÖZÜMÜ
+                try? context.save()
                 dismiss()
             }
         } else { errorMsg = "Fiyat alınamadı." }
@@ -373,7 +454,7 @@ struct ElementAdderScreen: View {
         item.quantity = newTotalQuantity
         item.currentPrice = pendingPrice
         
-        try? context.save() // HATA ÇÖZÜMÜ
+        try? context.save()
         dismiss()
     }
 }
@@ -403,21 +484,36 @@ struct CashAdderScreen: View {
     }
     
     let currencies = [("TRY", "₺"), ("USD", "$"), ("EUR", "€")]
-
+    
     var body: some View {
         StandardAdderLayout(title: "Nakit Ekle", themeColor: themeColor, isLoading: isLoading, errorMessage: errorMsg, isSaveDisabled: !isFormValid, onSave: { Task { await processAddition() } }) {
+            
             CustomSegmentedPicker(options: currencies, selection: $selectedCurrency, color: themeColor)
             
-            AdderTextField(title: "Miktar", text: $quantity, isNumber: true, submitLabel: selectedCurrency == "TRY" ? .done : .next) {
-                if selectedCurrency == "TRY" { focusedField = nil }
-                else { focusedField = .purchasePrice }
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Miktar").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $quantity)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .quantity)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             }
-            .focused($focusedField, equals: .quantity)
             
-            // Yalnızca döviz eklenecekse kur maliyeti istiyoruz
             if selectedCurrency != "TRY" {
-                AdderTextField(title: "Alış Kuru (Maliyet)", text: $purchasePriceStr, isNumber: true, submitLabel: .done) { focusedField = nil }
-                    .focused($focusedField, equals: .purchasePrice)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Alış Kuru (Maliyet)").font(.caption).foregroundStyle(.secondary)
+                    TextField("", text: $purchasePriceStr)
+                        .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .purchasePrice)
+                        .frame(height: 50)
+                        .padding(.horizontal)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                }
             }
         }
         .alert("Para Birimi Zaten Var", isPresented: $showDuplicateAlert) {
@@ -453,7 +549,7 @@ struct CashAdderScreen: View {
             showDuplicateAlert = true
         } else {
             context.insert(Cash(symbol: searchSymbol, quantity: qty, currentPrice: price, purchasePrice: cost))
-            try? context.save() // HATA ÇÖZÜMÜ
+            try? context.save()
             dismiss()
         }
         isLoading = false
@@ -478,7 +574,11 @@ struct CashAdderScreen: View {
         item.quantity = newTotalQuantity
         item.currentPrice = pendingPrice
         
-        try? context.save() // HATA ÇÖZÜMÜ
+        try? context.save()
         dismiss()
     }
+}
+#Preview {
+    StockAdderScreen(themeColor: .mainAppColor)
+        .modelContainer(for: Stock.self, inMemory: true)
 }

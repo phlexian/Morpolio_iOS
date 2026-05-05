@@ -37,95 +37,71 @@ class APIService {
         return await fetchYahooPrice(symbol: cleanSymbol)
     }
     
-    // MARK: - Fund API (Döviz.com Scraping - En Stabil Yöntem)
+    // MARK: - Fund API (HangiKredi Scraping)
     func fetchFundPrice(symbol: String) async -> Double? {
-        let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 1. ÖNCELİK: Döviz.com (Hafta sonu dahil en hızlı ve stabil kaynak)
-        if let price = await fetchFromDovizCom(symbol: cleanSymbol) {
-            return price
-        }
-        
-        // 2. YEDEK: TEFAS (Devlet sitesi, yavaş olabilir)
-        if let price = await fetchFromTEFAS(symbol: cleanSymbol) {
+        if let price = await fetchFromHangikredi(symbol: cleanSymbol) {
             return price
         }
         
         return nil
     }
     
-    // Döviz.com HTML Parser
-    private func fetchFromDovizCom(symbol: String) async -> Double? {
-        // URL Yapısı: https://borsa.doviz.com/fonlar/TTE
-        let urlString = "https://borsa.doviz.com/fonlar/\(symbol)"
+    // HangiKredi HTML Parser
+    private func fetchFromHangikredi(symbol: String) async -> Double? {
+        // HangiKredi URL'leri küçük harf ile çalışır (Örn: yzg)
+        let urlString = "https://www.hangikredi.com/yatirim-araclari/fon/\(symbol.lowercased())"
         guard let url = URL(string: urlString) else { return nil }
         
         var request = URLRequest(url: url)
-        // Tarayıcı taklidi yapıyoruz
+        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
+        request.setValue("tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7", forHTTPHeaderField: "Accept-Language")
         
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            if let html = String(data: data, encoding: .utf8) {
-                // Döviz.com'da fiyat, data-socket-key="FONKODU" olan elementin içindedir.
-                // Örnek: <div class="..." data-socket-key="TTE" ...>45,1234</div>
-                
-                let searchKey = "data-socket-key=\"\(symbol)\""
-                
-                if let keyRange = html.range(of: searchKey) {
-                    // Anahtarı bulduktan sonraki kısmı al
-                    let substring = html[keyRange.upperBound...]
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 {
+                if let html = String(data: data, encoding: .utf8) {
                     
-                    // İlk ">" (tag kapanışı) ile ilk "<" (div kapanışı) arasını al
-                    if let startTag = substring.range(of: ">"),
-                       let endTag = substring.range(of: "<") {
-                        
-                        let priceString = String(substring[startTag.upperBound..<endTag.lowerBound])
-                        // Temizle: Boşlukları at, virgülü noktaya çevir
-                        let cleanPrice = priceString
-                            .replacingOccurrences(of: ",", with: ".")
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        
-                        if let value = Double(cleanPrice) {
-                            return value
-                        }
-                    }
-                }
-            }
-        } catch { print("Doviz.com Hatası: \(error)") }
-        return nil
-    }
-    
-    // TEFAS HTML Parser (Yedek)
-    private func fetchFromTEFAS(symbol: String) async -> Double? {
-        let urlString = "https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=\(symbol)"
-        guard let url = URL(string: urlString) else { return nil }
-        
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            if let html = String(data: data, encoding: .utf8) {
-                // "Son Fiyat" kelimesini bul
-                if let keywordRange = html.range(of: "Son Fiyat") {
-                    let substring = html[keywordRange.upperBound...]
+                    // Regex: HTML elementleri (> ve <) arasında yer alan,
+                    // formatı "12,3456" veya "1.234,56" şeklinde olan ondalıklı sayıları yakalar.
+                    let pattern = ">\\s*([0-9]+(?:\\.[0-9]{3})*,[0-9]{2,6})\\s*<"
                     
-                    // Son Fiyat'tan sonra gelen ilk rakam grubunu yakala (örn: <span>12,3456</span>)
-                    // Regex: taglerin arasindaki sayi
-                    let pattern = ">([0-9,.]+)<"
                     if let regex = try? NSRegularExpression(pattern: pattern) {
-                        let nsString = substring as NSString
-                        // İlk eşleşen muhtemelen fiyattır
-                        if let match = regex.firstMatch(in: String(substring), range: NSRange(location: 0, length: min(200, substring.count))) {
-                            let priceStr = nsString.substring(with: match.range(at: 1))
-                            let formatted = priceStr.replacingOccurrences(of: ",", with: ".")
-                            return Double(formatted)
+                        
+                        // Sadece body içeriğini tarayarak hatalı eşleşmeleri engelliyoruz
+                        if let bodyRange = html.range(of: "<body") {
+                            let substring = String(html[bodyRange.lowerBound...])
+                            let nsSubString = substring as NSString
+                            
+                            let matches = regex.matches(in: substring, range: NSRange(location: 0, length: nsSubString.length))
+                            
+                            // Sayfadaki uygun formatlı ilk sayı genellikle ana fiyattır
+                            if let match = matches.first {
+                                let priceStr = nsSubString.substring(with: match.range(at: 1))
+                                
+                                // Swift'te ondalık sayıya çevirebilmek için binlik ayracı olan noktayı kaldır, virgülü noktaya çevir
+                                let cleanPrice = priceStr.replacingOccurrences(of: ".", with: "")
+                                                         .replacingOccurrences(of: ",", with: ".")
+                                
+                                if let price = Double(cleanPrice) {
+                                    print("HangiKredi'den başarıyla çekildi: \(price)")
+                                    return price
+                                }
+                            } else {
+                                print("HangiKredi Parse Hatası: HTML içinde fiyat formatı bulunamadı.")
+                            }
                         }
                     }
                 }
+            } else {
+                if let httpRes = response as? HTTPURLResponse {
+                    print("HangiKredi HTTP Hatası: \(httpRes.statusCode)")
+                }
             }
-        } catch { print("TEFAS Hatası: \(error)") }
+        } catch { print("HangiKredi Bağlantı Hatası: \(error)") }
         return nil
     }
     

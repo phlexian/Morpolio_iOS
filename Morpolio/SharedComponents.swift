@@ -5,31 +5,11 @@ extension Color {
     static let mainAppColor = Color(red: 244/255, green: 67/255, blue: 54/255)
 }
 
-// MARK: - STANDART TEXTFIELD (Klavye Kontrolü Eklendi)
-struct AdderTextField: View {
-    let title: String
-    @Binding var text: String
-    var isNumber: Bool = false
-    var submitLabel: SubmitLabel = .done // YENİ: Klavye butonu tipi
-    var onSubmit: () -> Void = {} // YENİ: Enter'a basılınca ne olacak?
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            TextField("", text: $text)
-                // Not: .decimalPad'de "Enter" tuşu olmaz. O yüzden .numbersAndPunctuation kullanıyoruz.
-                .keyboardType(isNumber ? .numbersAndPunctuation : .default)
-                .submitLabel(submitLabel)
-                .onSubmit(onSubmit)
-                .padding()
-                .background(Color(uiColor: .secondarySystemBackground))
-                .cornerRadius(10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                )
-        }
-    }
+// MARK: - ODAK YÖNETİMİ İÇİN ENUM
+enum AdderField {
+    case symbol
+    case quantity
+    case purchasePrice
 }
 
 // MARK: - LIQUID GLASS PICKER
@@ -91,12 +71,20 @@ struct StandardUpdateSheet: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Capsule().fill(Color.gray.opacity(0.3)).frame(width: 40, height: 5).padding(.top, 10)
-            Text("\(title) Güncelle").font(.title2).bold().foregroundStyle(themeColor)
+            Text("\(title) Güncelle")
+                .font(.title2)
+                .bold()
+                .foregroundStyle(themeColor)
+                .padding(.top, 35) // Başlığı aşağı itmek için artırıldı
+            
             VStack(alignment: .leading, spacing: 8) {
                 Text("Yeni Adet").font(.caption).foregroundStyle(.secondary)
                 TextField("Adet giriniz", text: $text)
-                    .keyboardType(.decimalPad).padding().background(Color(uiColor: .secondarySystemBackground)).cornerRadius(12)
+                    .keyboardType(.decimalPad)
+                    .frame(height: 50)
+                    .padding(.horizontal)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .cornerRadius(12)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeColor.opacity(0.5), lineWidth: 1))
             }.padding(.horizontal)
             Button(action: {
@@ -105,7 +93,12 @@ struct StandardUpdateSheet: View {
                 Text("Kaydet").font(.headline).frame(maxWidth: .infinity).padding().background(themeColor).foregroundStyle(.white).cornerRadius(16)
             }.padding(.horizontal)
             Spacer()
-        }.presentationDetents([.fraction(0.4)])
+        }
+        .presentationDetents([.fraction(0.4)])
+        .contentShape(Rectangle())
+        .onTapGesture {
+            hideKeyboard()
+        }
     }
 }
 
@@ -121,8 +114,12 @@ struct StandardAdderLayout<Content: View>: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            Capsule().fill(Color.gray.opacity(0.3)).frame(width: 40, height: 5).padding(.top, 10).padding(.bottom, 20)
-            Text(title).font(.title).bold().foregroundStyle(themeColor).padding(.bottom, 10)
+            Text(title)
+                .font(.title)
+                .bold()
+                .foregroundStyle(themeColor)
+                .padding(.top, 40) // Başlığı aşağı itmek için artırıldı
+                .padding(.bottom, 30)
             
             if let error = errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red).padding(.bottom, 10)
@@ -132,6 +129,10 @@ struct StandardAdderLayout<Content: View>: View {
                 VStack(spacing: 20) { content }.padding(.horizontal)
             }
             .disabled(isLoading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                hideKeyboard()
+            }
             
             Button(action: onSave) {
                 ZStack {
@@ -141,12 +142,14 @@ struct StandardAdderLayout<Content: View>: View {
                 .frame(maxWidth: .infinity).padding()
                 .background(isSaveDisabled || isLoading ? Color.gray : themeColor)
                 .foregroundStyle(.white).cornerRadius(16).shadow(radius: isSaveDisabled ? 0 : 5)
-            }.disabled(isSaveDisabled || isLoading).padding()
+            }
+            .disabled(isSaveDisabled || isLoading)
+            .padding()
         }
     }
 }
 
-// MARK: - TOAST GÖRÜNÜMÜ (Okunabilirlik Arttırıldı)
+// MARK: - TOAST GÖRÜNÜMÜ
 struct FancyToastView: View {
     let message: String
     let themeColor: Color
@@ -155,7 +158,6 @@ struct FancyToastView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Geri Sayım
             ZStack {
                 Circle().stroke(themeColor.opacity(0.3), lineWidth: 3)
                 Circle()
@@ -166,17 +168,15 @@ struct FancyToastView: View {
             }
             .frame(width: 30, height: 30)
             
-            // Mesaj Alanı
             Text(message)
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                .foregroundStyle(Color.primary) // Sistem rengi (Dark/Light uyumlu)
+                .foregroundStyle(Color.primary)
                 .lineLimit(1)
-                .layoutPriority(1) // Metne öncelik ver
+                .layoutPriority(1)
             
             Spacer()
             
-            // Geri Al Butonu
             Button(action: onUndo) {
                 Text("Geri Al")
                     .font(.system(size: 14, weight: .bold))
@@ -185,14 +185,10 @@ struct FancyToastView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(.regularMaterial) // Arka plan
+        .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.gray.opacity(0.1), lineWidth: 1))
         .padding(.horizontal, 24)
         .shadow(color: Color.black.opacity(0.15), radius: 10, y: 5)
     }
 }
-
