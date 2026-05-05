@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// Portföy Listesi için Yardımcı Model
 struct PortfolioSummaryItem: Identifiable {
     var id: String { name }
     let name: String
@@ -39,7 +38,7 @@ struct HomeScreen: View {
     @State private var exchangeRates: (usd: Double, eur: Double) = (1.0, 1.0)
     @State private var isCurrencyBusy = false
     
-    @State private var updateTrigger: Int = 0 // Arayüzü zorla yenilemek için tetikleyici
+    @State private var updateTrigger: Int = 0
     
     var grandTotal: Double {
         _ = updateTrigger
@@ -108,7 +107,6 @@ struct HomeScreen: View {
                         
                         VStack(spacing: 30) {
                             
-                            // A. TOPLAM VARLIK VE KAR/ZARAR
                             VStack(spacing: 5) {
                                 Text("Varlıklar Toplamı").font(.title3).bold().foregroundStyle(.secondary)
                                 Button(action: cycleCurrency) {
@@ -124,9 +122,8 @@ struct HomeScreen: View {
                                 
                                 if grandTotalCost > 0 {
                                     let convertedProfit = convert(overallProfit)
-                                    let isProfit = convertedProfit >= 0
-                                    let color: Color = isProfit ? .green : .red
-                                    let sign = isProfit ? "+" : ""
+                                    let color: Color = convertedProfit > 0 ? .green : (convertedProfit < 0 ? .red : .gray)
+                                    let sign = convertedProfit > 0 ? "+" : ""
                                     Text("\(sign)\(convertedProfit, specifier: "%.2f") \(selectedCurrency.rawValue) (\(sign)\(overallProfitPercentage, specifier: "%.2f")%)")
                                         .font(.subheadline)
                                         .fontWeight(.medium)
@@ -134,7 +131,6 @@ struct HomeScreen: View {
                                 }
                             }
                             
-                            // B. AKORDİYON LİSTE (KARTLAR)
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 15) {
                                     ForEach(Array(portfolioList.enumerated()), id: \.element.id) { index, item in
@@ -147,9 +143,8 @@ struct HomeScreen: View {
                                                     if item.cost > 0 {
                                                         let profitAmount = item.value - item.cost
                                                         let profitPct = (profitAmount / item.cost) * 100
-                                                        let isProfit = profitAmount >= 0
-                                                        let color: Color = isProfit ? .green : .red
-                                                        let sign = isProfit ? "+" : ""
+                                                        let color: Color = profitAmount > 0 ? .green : (profitAmount < 0 ? .red : .gray)
+                                                        let sign = profitAmount > 0 ? "+" : ""
                                                         Text("\(sign)\(convert(profitAmount), specifier: "%.2f") \(selectedCurrency.rawValue) (\(sign)\(profitPct, specifier: "%.2f")%)")
                                                             .font(.caption)
                                                             .foregroundStyle(color)
@@ -215,26 +210,19 @@ struct HomeScreen: View {
         if selectedCurrency != .tryCurrency && exchangeRates == (1.0, 1.0) { Task { isCurrencyBusy = true; if let rates = await currencyService.fetchRates() { exchangeRates = rates }; isCurrencyBusy = false } }
     }
     
-    // MARK: - EŞZAMANLI (PARALEL) VE GÜVENLİ API İSTEKLERİ
     @MainActor
     func refreshAllData() async {
-        
-        // Önce sadece sembolleri topluyoruz (State'i veya objeleri bozmamak için)
         let stockSymbols = stocks.map { $0.symbol }
         let cryptoSymbols = cryptos.map { $0.symbol }
         let fundSymbols = funds.map { $0.symbol }
         let elementSymbols = elements.map { $0.symbol }
         
-        // API bağlantılarını birer değişkene atıyoruz (Görevlerin içinde kullanabilmek için)
         let api = apiService
         let curApi = currencyService
         
-        // 1. Döviz Kurlarını arka planda çek (Değişkene ata, State'e DEĞİL)
         async let fetchedRates = curApi.fetchRates()
         
-        // 2. Diğer tüm fiyatları paralel (aynı anda) çek
         let fetchedPrices = await withTaskGroup(of: (String, String, Double).self) { group in
-            
             for sym in stockSymbols {
                 group.addTask { if let p = await api.fetchStockPrice(symbol: sym) { return ("stock", sym, p) } else { return ("stock", sym, -1) } }
             }
@@ -257,12 +245,8 @@ struct HomeScreen: View {
         
         let newRates = await fetchedRates
         
-        // ==========================================
-        // İNDİRME İŞLEMLERİ BİTTİ. ŞİMDİ EKRANI GÜNCELLEYEBİLİRİZ!
-        // ==========================================
-        
         if let rates = newRates {
-            exchangeRates = rates // Döviz kuru ekrana yansır
+            exchangeRates = rates
             for item in cashItems {
                 if item.symbol == "USD" { item.currentPrice = rates.usd }
                 else if item.symbol == "EUR" { item.currentPrice = rates.eur }
@@ -270,7 +254,6 @@ struct HomeScreen: View {
             }
         }
         
-        // Hisseleri, kriptoları veritabanına yazıyoruz
         for result in fetchedPrices {
             let (type, sym, price) = result
             if type == "stock" { if let s = stocks.first(where: { $0.symbol == sym }) { s.currentPrice = price } }
@@ -279,7 +262,6 @@ struct HomeScreen: View {
             else if type == "element" { if let e = elements.first(where: { $0.symbol == sym }) { e.currentPrice = price } }
         }
         
-        // Kaydedip ekranı zorla yeniden çizdiriyoruz
         try? context.save()
         updateTrigger += 1
     }

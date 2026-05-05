@@ -44,6 +44,7 @@ struct StockAdderScreen: View {
                 TextField("", text: $quantity)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .quantity)
+                    .onChange(of: quantity) { _, newValue in quantity = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -56,6 +57,7 @@ struct StockAdderScreen: View {
                 TextField("", text: $purchasePriceStr)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .purchasePrice)
+                    .onChange(of: purchasePriceStr) { _, newValue in purchasePriceStr = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -71,8 +73,9 @@ struct StockAdderScreen: View {
     
     func processAddition() async {
         errorMsg = nil
-        guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let cost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        let qty = quantity.toDouble()
+        let cost = purchasePriceStr.toDouble()
+        guard qty > 0, cost > 0 else { return }
         
         let searchSymbol = symbol.uppercased()
         isLoading = true
@@ -92,9 +95,10 @@ struct StockAdderScreen: View {
     }
     
     func updateExisting() {
-        guard let item = existingItem,
-              let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let cost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        guard let item = existingItem else { return }
+        let qty = quantity.toDouble()
+        let cost = purchasePriceStr.toDouble()
+        guard qty > 0, cost > 0 else { return }
         
         let totalOldCost = item.quantity * item.purchasePrice
         let totalNewCost = qty * cost
@@ -156,6 +160,7 @@ struct CryptoAdderScreen: View {
                 TextField("", text: $quantity)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .quantity)
+                    .onChange(of: quantity) { _, newValue in quantity = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -169,6 +174,7 @@ struct CryptoAdderScreen: View {
                     TextField("", text: $purchasePriceStr)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .purchasePrice)
+                        .onChange(of: purchasePriceStr) { _, newValue in purchasePriceStr = newValue.formatNumber() }
                         .frame(height: 50)
                         .padding(.horizontal)
                         .background(Color(uiColor: .secondarySystemBackground))
@@ -202,8 +208,9 @@ struct CryptoAdderScreen: View {
     
     func processAddition() async {
         errorMsg = nil
-        guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let enteredCost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        let qty = quantity.toDouble()
+        let enteredCost = purchasePriceStr.toDouble()
+        guard qty > 0, enteredCost > 0 else { return }
         
         isLoading = true
         var finalCostInTRY = enteredCost
@@ -235,7 +242,9 @@ struct CryptoAdderScreen: View {
     }
     
     func updateExisting() {
-        guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        guard let item = existingItem else { return }
+        let qty = quantity.toDouble()
+        guard qty > 0 else { return }
         
         let totalOldCost = item.quantity * item.purchasePrice
         let totalNewCost = qty * pendingCostInTRY
@@ -297,6 +306,7 @@ struct FundAdderScreen: View {
                 TextField("", text: $quantity)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .quantity)
+                    .onChange(of: quantity) { _, newValue in quantity = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -309,6 +319,7 @@ struct FundAdderScreen: View {
                 TextField("", text: $purchasePriceStr)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .purchasePrice)
+                    .onChange(of: purchasePriceStr) { _, newValue in purchasePriceStr = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -324,8 +335,9 @@ struct FundAdderScreen: View {
     
     func processAddition() async {
         errorMsg = nil
-        guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let cost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        let qty = quantity.toDouble()
+        let cost = purchasePriceStr.toDouble()
+        guard qty > 0, cost > 0 else { return }
         
         let searchSymbol = symbol.uppercased()
         isLoading = true
@@ -345,9 +357,10 @@ struct FundAdderScreen: View {
     }
     
     func updateExisting() {
-        guard let item = existingItem,
-              let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let cost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        guard let item = existingItem else { return }
+        let qty = quantity.toDouble()
+        let cost = purchasePriceStr.toDouble()
+        guard qty > 0, cost > 0 else { return }
         
         let totalOldCost = item.quantity * item.purchasePrice
         let totalNewCost = qty * cost
@@ -394,6 +407,7 @@ struct ElementAdderScreen: View {
                 TextField("", text: $quantity)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .quantity)
+                    .onChange(of: quantity) { _, newValue in quantity = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -406,6 +420,7 @@ struct ElementAdderScreen: View {
                 TextField("", text: $purchasePriceStr)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .purchasePrice)
+                    .onChange(of: purchasePriceStr) { _, newValue in purchasePriceStr = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -416,13 +431,14 @@ struct ElementAdderScreen: View {
         .alert("Maden Zaten Var", isPresented: $showDuplicateAlert) {
             Button("İptal", role: .cancel) { }
             Button("Üzerine Ekle") { updateExisting() }
-        } message: { Text("Mevcut gramajın üzerine eklensin mi?") }
+        } message: { Text("Mevcut gramaj üzerine eklensin mi?") }
     }
     
     func processAddition() async {
         errorMsg = nil
-        guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let cost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        let qty = quantity.toDouble()
+        let cost = purchasePriceStr.toDouble()
+        guard qty > 0, cost > 0 else { return }
         
         isLoading = true
         let searchSymbol = selectedElement
@@ -442,9 +458,10 @@ struct ElementAdderScreen: View {
     }
     
     func updateExisting() {
-        guard let item = existingItem,
-              let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")),
-              let cost = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+        guard let item = existingItem else { return }
+        let qty = quantity.toDouble()
+        let cost = purchasePriceStr.toDouble()
+        guard qty > 0, cost > 0 else { return }
         
         let totalOldCost = item.quantity * item.purchasePrice
         let totalNewCost = qty * cost
@@ -495,6 +512,7 @@ struct CashAdderScreen: View {
                 TextField("", text: $quantity)
                     .keyboardType(.decimalPad)
                     .focused($focusedField, equals: .quantity)
+                    .onChange(of: quantity) { _, newValue in quantity = newValue.formatNumber() }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
@@ -508,6 +526,7 @@ struct CashAdderScreen: View {
                     TextField("", text: $purchasePriceStr)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .purchasePrice)
+                        .onChange(of: purchasePriceStr) { _, newValue in purchasePriceStr = newValue.formatNumber() }
                         .frame(height: 50)
                         .padding(.horizontal)
                         .background(Color(uiColor: .secondarySystemBackground))
@@ -523,13 +542,15 @@ struct CashAdderScreen: View {
     }
     
     func processAddition() async {
-        guard let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        let qty = quantity.toDouble()
+        guard qty > 0 else { return }
         
         let cost: Double
         if selectedCurrency == "TRY" {
             cost = 1.0
         } else {
-            guard let c = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+            let c = purchasePriceStr.toDouble()
+            guard c > 0 else { return }
             cost = c
         }
         
@@ -556,13 +577,16 @@ struct CashAdderScreen: View {
     }
     
     func updateExisting() {
-        guard let item = existingItem, let qty = Double(quantity.replacingOccurrences(of: ",", with: ".")) else { return }
+        guard let item = existingItem else { return }
+        let qty = quantity.toDouble()
+        guard qty > 0 else { return }
         
         let cost: Double
         if selectedCurrency == "TRY" {
             cost = 1.0
         } else {
-            guard let c = Double(purchasePriceStr.replacingOccurrences(of: ",", with: ".")) else { return }
+            let c = purchasePriceStr.toDouble()
+            guard c > 0 else { return }
             cost = c
         }
         
@@ -577,8 +601,4 @@ struct CashAdderScreen: View {
         try? context.save()
         dismiss()
     }
-}
-#Preview {
-    StockAdderScreen(themeColor: .mainAppColor)
-        .modelContainer(for: Stock.self, inMemory: true)
 }

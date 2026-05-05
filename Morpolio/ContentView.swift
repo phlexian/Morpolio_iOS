@@ -197,20 +197,20 @@ struct ContentView: View {
     @State private var undoTimer: Timer?
     @State private var timeLeft: Int = 5
     
-    @State private var stockSortOption: SortOption = .totalValue
-    @State private var stockSortAsc: Bool = false
-    
-    @State private var cryptoSortOption: SortOption = .totalValue
-    @State private var cryptoSortAsc: Bool = false
-    
-    @State private var fundSortOption: SortOption = .totalValue
-    @State private var fundSortAsc: Bool = false
-    
-    @State private var elementSortOption: SortOption = .totalValue
-    @State private var elementSortAsc: Bool = false
-    
-    @State private var cashSortOption: SortOption = .totalValue
-    @State private var cashSortAsc: Bool = false
+    @AppStorage("stockSortOption") private var stockSortOption: SortOption = .totalValue
+        @AppStorage("stockSortAsc") private var stockSortAsc: Bool = false
+        
+        @AppStorage("cryptoSortOption") private var cryptoSortOption: SortOption = .totalValue
+        @AppStorage("cryptoSortAsc") private var cryptoSortAsc: Bool = false
+        
+        @AppStorage("fundSortOption") private var fundSortOption: SortOption = .totalValue
+        @AppStorage("fundSortAsc") private var fundSortAsc: Bool = false
+        
+        @AppStorage("elementSortOption") private var elementSortOption: SortOption = .totalValue
+        @AppStorage("elementSortAsc") private var elementSortAsc: Bool = false
+        
+        @AppStorage("cashSortOption") private var cashSortOption: SortOption = .totalValue
+        @AppStorage("cashSortAsc") private var cashSortAsc: Bool = false
     
     // Genel Toplam Hesaplamaları
     var totalStockValue: Double { stocks.reduce(0) { $0 + $1.totalValue } }
@@ -391,9 +391,10 @@ struct ContentView: View {
 }
 
 // MARK: - 4. LİSTE GÖRÜNÜMLERİ
+
 struct StockListView: View {
     var stocks: [Stock]; var currency: Currency; var rates: (usd: Double, eur: Double); var themeColor: Color; var onRefresh: () async -> Void; var onDeleteRequest: (Stock) -> Void
-    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Stock?
+    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Stock?; @State private var itemToSell: Stock?
     func convert(_ value: Double) -> Double { switch currency { case .tryCurrency: return value; case .usd: return value / (rates.usd > 0 ? rates.usd : 1); case .eur: return value / (rates.eur > 0 ? rates.eur : 1) } }
     var body: some View {
         List {
@@ -413,16 +414,18 @@ struct StockListView: View {
                 .padding(.vertical, 4)
                 .listRowBackground(Rectangle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) { Button(role: .destructive) { onDeleteRequest(stock) } label: { Label("Sil", systemImage: "trash") }.tint(.red); Button { itemToUpdate = stock } label: { Label("Güncelle", systemImage: "pencil") }.tint(themeColor) }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) { Button { itemToSell = stock } label: { Label("Satış", systemImage: "minus.circle") }.tint(.orange) }
             }
         }
         .listStyle(.insetGrouped).refreshable { await onRefresh() }
         .sheet(item: $itemToUpdate) { stock in QuantityUpdateSheet(symbol: stock.symbol, currentQuantity: stock.quantity, currentPurchasePrice: stock.purchasePrice) { newQty, newPrice in stock.quantity = newQty; stock.purchasePrice = newPrice; try? context.save() }.presentationDetents([.fraction(0.4)]) }
+        .sheet(item: $itemToSell) { stock in SellSheet(symbol: stock.symbol, currentQuantity: stock.quantity, currentPrice: stock.currentPrice, themeColor: themeColor) { soldQty, _ in let newQty = max(0, stock.quantity - soldQty); stock.quantity = newQty; try? context.save() }.presentationDetents([.fraction(0.4)]) }
     }
 }
 
 struct CryptoListView: View {
     var cryptos: [Crypto]; var currency: Currency; var rates: (usd: Double, eur: Double); var themeColor: Color; var onRefresh: () async -> Void; var onDeleteRequest: (Crypto) -> Void
-    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Crypto?
+    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Crypto?; @State private var itemToSell: Crypto?
     func convert(_ value: Double) -> Double { switch currency { case .tryCurrency: return value; case .usd: return value / (rates.usd > 0 ? rates.usd : 1); case .eur: return value / (rates.eur > 0 ? rates.eur : 1) } }
     var body: some View {
         List {
@@ -430,7 +433,8 @@ struct CryptoListView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .lastTextBaseline, spacing: 6) { Text(crypto.symbol).font(.headline).bold(); Text("\(convert(crypto.currentPrice), specifier: "%.4f") \(currency.rawValue)").font(.caption).foregroundStyle(.secondary) }
-                        Text("\(crypto.quantity, specifier: "%.4f") adet • Maliyet: \(convert(crypto.purchasePrice), specifier: "%.4f")").font(.caption).foregroundStyle(.gray)
+                        // Adet bilgisindeki uzun basamaklar sınırlandırıldı:
+                        Text("\(crypto.quantity.formatted(.number.precision(.fractionLength(0...8)))) adet • Maliyet: \(convert(crypto.purchasePrice), specifier: "%.4f")").font(.caption).foregroundStyle(.gray)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
@@ -441,31 +445,34 @@ struct CryptoListView: View {
                 }
                 .padding(.vertical, 4).listRowBackground(Rectangle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) { Button(role: .destructive) { onDeleteRequest(crypto) } label: { Label("Sil", systemImage: "trash") }.tint(.red); Button { itemToUpdate = crypto } label: { Label("Güncelle", systemImage: "pencil") }.tint(themeColor) }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) { Button { itemToSell = crypto } label: { Label("Sat", systemImage: "minus.circle") }.tint(.orange) }
             }
         }
         .listStyle(.insetGrouped).refreshable { await onRefresh() }
         .sheet(item: $itemToUpdate) { crypto in
-            // YENİ: Sheet'e orijinal fiyatı ve satın alınan döviz sembolünü yolluyoruz
             QuantityUpdateSheet(symbol: crypto.symbol, currentQuantity: crypto.quantity, currentPurchasePrice: crypto.originalPurchasePrice, purchaseCurrency: crypto.purchaseCurrency) { newQty, newOriginalPrice in
                 crypto.quantity = newQty
-                crypto.originalPurchasePrice = newOriginalPrice
-                
-                // YENİ: Girilen yabancı dövizi TL karşılığına çevirip veritabanına yazıyoruz (Kar zarar hesabı için)
                 let multiplier: Double
                 if crypto.purchaseCurrency == "$" { multiplier = rates.usd }
                 else if crypto.purchaseCurrency == "€" { multiplier = rates.eur }
                 else { multiplier = 1.0 }
-                
                 crypto.purchasePrice = newOriginalPrice * multiplier
                 try? context.save()
             }.presentationDetents([.fraction(0.4)])
+        }
+        .sheet(item: $itemToSell) { crypto in
+            // Yeni oluşturduğumuz CryptoSellSheet çağırıldı
+            CryptoSellSheet(crypto: crypto, themeColor: themeColor, rates: rates) { soldQty, _ in
+                let newQty = max(0, crypto.quantity - soldQty); crypto.quantity = newQty; try? context.save()
+            }
+            .presentationDetents([.fraction(0.55)])
         }
     }
 }
 
 struct FundListView: View {
     var funds: [Fund]; var currency: Currency; var rates: (usd: Double, eur: Double); var themeColor: Color; var onRefresh: () async -> Void; var onDeleteRequest: (Fund) -> Void
-    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Fund?
+    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Fund?; @State private var itemToSell: Fund?
     func convert(_ value: Double) -> Double { switch currency { case .tryCurrency: return value; case .usd: return value / (rates.usd > 0 ? rates.usd : 1); case .eur: return value / (rates.eur > 0 ? rates.eur : 1) } }
     var body: some View {
         List {
@@ -484,16 +491,18 @@ struct FundListView: View {
                 }
                 .padding(.vertical, 4).listRowBackground(Rectangle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) { Button(role: .destructive) { onDeleteRequest(fund) } label: { Label("Sil", systemImage: "trash") }.tint(.red); Button { itemToUpdate = fund } label: { Label("Güncelle", systemImage: "pencil") }.tint(themeColor) }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) { Button { itemToSell = fund } label: { Label("Satış", systemImage: "minus.circle") }.tint(.orange) }
             }
         }
         .listStyle(.insetGrouped).refreshable { await onRefresh() }
         .sheet(item: $itemToUpdate) { fund in QuantityUpdateSheet(symbol: fund.symbol, currentQuantity: fund.quantity, currentPurchasePrice: fund.purchasePrice) { newQty, newPrice in fund.quantity = newQty; fund.purchasePrice = newPrice; try? context.save() }.presentationDetents([.fraction(0.4)]) }
+        .sheet(item: $itemToSell) { fund in SellSheet(symbol: fund.symbol, currentQuantity: fund.quantity, currentPrice: fund.currentPrice, themeColor: themeColor) { soldQty, _ in let newQty = max(0, fund.quantity - soldQty); fund.quantity = newQty; try? context.save() }.presentationDetents([.fraction(0.4)]) }
     }
 }
 
 struct ElementListView: View {
     var elements: [Element]; var currency: Currency; var rates: (usd: Double, eur: Double); var themeColor: Color; var onRefresh: () async -> Void; var onDeleteRequest: (Element) -> Void
-    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Element?
+    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Element?; @State private var itemToSell: Element?
     func convert(_ value: Double) -> Double { switch currency { case .tryCurrency: return value; case .usd: return value / (rates.usd > 0 ? rates.usd : 1); case .eur: return value / (rates.eur > 0 ? rates.eur : 1) } }
     var body: some View {
         List {
@@ -512,16 +521,18 @@ struct ElementListView: View {
                 }
                 .padding(.vertical, 4).listRowBackground(Rectangle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) { Button(role: .destructive) { onDeleteRequest(element) } label: { Label("Sil", systemImage: "trash") }.tint(.red); Button { itemToUpdate = element } label: { Label("Güncelle", systemImage: "pencil") }.tint(themeColor) }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) { Button { itemToSell = element } label: { Label("Satış", systemImage: "minus.circle") }.tint(.orange) }
             }
         }
         .listStyle(.insetGrouped).refreshable { await onRefresh() }
         .sheet(item: $itemToUpdate) { element in QuantityUpdateSheet(symbol: element.displayName, currentQuantity: element.quantity, currentPurchasePrice: element.purchasePrice) { newQty, newPrice in element.quantity = newQty; element.purchasePrice = newPrice; try? context.save() }.presentationDetents([.fraction(0.4)]) }
+        .sheet(item: $itemToSell) { element in SellSheet(symbol: element.displayName, currentQuantity: element.quantity, currentPrice: element.currentPrice, themeColor: themeColor) { soldQty, _ in let newQty = max(0, element.quantity - soldQty); element.quantity = newQty; try? context.save() }.presentationDetents([.fraction(0.4)]) }
     }
 }
 
 struct CashListView: View {
     var cashItems: [Cash]; var currency: Currency; var rates: (usd: Double, eur: Double); var themeColor: Color; var onRefresh: () async -> Void; var onDeleteRequest: (Cash) -> Void
-    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Cash?
+    @Environment(\.modelContext) private var context; @State private var itemToUpdate: Cash?; @State private var itemToSell: Cash?
     func convert(_ value: Double) -> Double { switch currency { case .tryCurrency: return value; case .usd: return value / (rates.usd > 0 ? rates.usd : 1); case .eur: return value / (rates.eur > 0 ? rates.eur : 1) } }
     var body: some View {
         List {
@@ -529,7 +540,7 @@ struct CashListView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .lastTextBaseline, spacing: 6) { Text(item.displayName).font(.headline).bold(); if item.symbol != "TRY" { Text("\(convert(item.currentPrice), specifier: "%.2f") \(currency.rawValue)").font(.caption).foregroundStyle(.secondary) } }
-                        if item.symbol != "TRY" { Text("\(item.quantity, specifier: "%.2f") • Alış Kuru: \(convert(item.purchasePrice), specifier: "%.2f")").font(.caption).foregroundStyle(.gray) } else { Text("\(item.quantity, specifier: "%.2f")").font(.caption).foregroundStyle(.gray) }
+                        if item.symbol != "TRY" { Text("\(item.quantity, specifier: "%.2f") • Kur: \(convert(item.purchasePrice), specifier: "%.2f")").font(.caption).foregroundStyle(.gray) } else { Text("\(item.quantity, specifier: "%.2f")").font(.caption).foregroundStyle(.gray) }
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
@@ -542,9 +553,11 @@ struct CashListView: View {
                 }
                 .padding(.vertical, 4).listRowBackground(Rectangle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) { Button(role: .destructive) { onDeleteRequest(item) } label: { Label("Sil", systemImage: "trash") }.tint(.red); Button { itemToUpdate = item } label: { Label("Güncelle", systemImage: "pencil") }.tint(themeColor) }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) { Button { itemToSell = item } label: { Label("Satış", systemImage: "minus.circle") }.tint(.orange) }
             }
         }
         .listStyle(.insetGrouped).refreshable { await onRefresh() }
         .sheet(item: $itemToUpdate) { item in QuantityUpdateSheet(symbol: item.displayName, currentQuantity: item.quantity, currentPurchasePrice: item.purchasePrice) { newQty, newPrice in item.quantity = newQty; item.purchasePrice = newPrice; try? context.save() }.presentationDetents([.fraction(0.4)]) }
+        .sheet(item: $itemToSell) { item in SellSheet(symbol: item.displayName, currentQuantity: item.quantity, currentPrice: item.currentPrice, themeColor: themeColor) { soldQty, _ in let newQty = max(0, item.quantity - soldQty); item.quantity = newQty; try? context.save() }.presentationDetents([.fraction(0.4)]) }
     }
 }

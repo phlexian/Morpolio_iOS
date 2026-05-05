@@ -57,6 +57,7 @@ struct StandardUpdateSheet: View {
     let currentQuantity: Double
     let themeColor: Color
     let onSave: (Double) -> Void
+    
     @State private var text: String
     @Environment(\.dismiss) private var dismiss
     
@@ -66,7 +67,7 @@ struct StandardUpdateSheet: View {
         self.themeColor = themeColor
         self.onSave = onSave
         let formatted = currentQuantity.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", currentQuantity) : String("\(currentQuantity)")
-        _text = State(initialValue: formatted)
+        _text = State(initialValue: formatted.formatNumber())
     }
     
     var body: some View {
@@ -75,20 +76,25 @@ struct StandardUpdateSheet: View {
                 .font(.title2)
                 .bold()
                 .foregroundStyle(themeColor)
-                .padding(.top, 35) // Başlığı aşağı itmek için artırıldı
+                .padding(.top, 35)
             
             VStack(alignment: .leading, spacing: 8) {
                 Text("Yeni Adet").font(.caption).foregroundStyle(.secondary)
                 TextField("Adet giriniz", text: $text)
                     .keyboardType(.decimalPad)
+                    .onChange(of: text) { _, newValue in
+                        text = newValue.formatNumber()
+                    }
                     .frame(height: 50)
                     .padding(.horizontal)
                     .background(Color(uiColor: .secondarySystemBackground))
                     .cornerRadius(12)
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeColor.opacity(0.5), lineWidth: 1))
             }.padding(.horizontal)
+            
             Button(action: {
-                if let val = Double(text.replacingOccurrences(of: ",", with: ".")) { onSave(val); dismiss() }
+                let val = text.toDouble()
+                if val > 0 { onSave(val); dismiss() }
             }) {
                 Text("Kaydet").font(.headline).frame(maxWidth: .infinity).padding().background(themeColor).foregroundStyle(.white).cornerRadius(16)
             }.padding(.horizontal)

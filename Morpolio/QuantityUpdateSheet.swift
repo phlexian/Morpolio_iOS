@@ -4,7 +4,7 @@ struct QuantityUpdateSheet: View {
     var symbol: String
     var currentQuantity: Double
     var currentPurchasePrice: Double
-    var purchaseCurrency: String = "₺" // Varsayılan döviz
+    var purchaseCurrency: String = "₺"
     
     var onUpdate: (Double, Double) -> Void
     @Environment(\.dismiss) var dismiss
@@ -15,17 +15,22 @@ struct QuantityUpdateSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Mevcut Adet: \(currentQuantity, specifier: "%.4f")")) {
+                Section(header: Text("Mevcut Adet: \(currentQuantity.formatted(.number.precision(.fractionLength(0...8))))")) {
                     TextField("Yeni Adet Giriniz", text: $newQuantity)
                         .keyboardType(.decimalPad)
+                        .onChange(of: newQuantity) { _, newValue in
+                            newQuantity = newValue.formatNumber()
+                        }
                 }
                 
-                Section(header: Text("Mevcut Alış Fiyatı: \(currentPurchasePrice, specifier: "%.4f") \(purchaseCurrency)")) {
+                Section(header: Text("Mevcut Alış Fiyatı: \(currentPurchasePrice.formatted(.number.precision(.fractionLength(0...8)))) \(purchaseCurrency)")) {
                     HStack {
                         TextField("Yeni Alış Fiyatı Giriniz", text: $newPurchasePrice)
                             .keyboardType(.decimalPad)
+                            .onChange(of: newPurchasePrice) { _, newValue in
+                                newPurchasePrice = newValue.formatNumber()
+                            }
                         
-                        // YENİ: Sağ tarafta sabit olarak duran ve değiştirilemeyen döviz sembolü
                         Text(purchaseCurrency)
                             .foregroundStyle(.secondary)
                             .fontWeight(.bold)
@@ -33,8 +38,8 @@ struct QuantityUpdateSheet: View {
                 }
                 
                 Button("Güncelle") {
-                    let qty = Double(newQuantity.replacingOccurrences(of: ",", with: ".")) ?? currentQuantity
-                    let price = Double(newPurchasePrice.replacingOccurrences(of: ",", with: ".")) ?? currentPurchasePrice
+                    let qty = newQuantity.toDouble() == 0.0 ? currentQuantity : newQuantity.toDouble()
+                    let price = newPurchasePrice.toDouble() == 0.0 ? currentPurchasePrice : newPurchasePrice.toDouble()
                     
                     onUpdate(qty, price)
                     dismiss()
@@ -48,8 +53,8 @@ struct QuantityUpdateSheet: View {
                 }
             }
             .onAppear {
-                newQuantity = String(currentQuantity)
-                newPurchasePrice = String(currentPurchasePrice)
+                newQuantity = String(format: "%g", currentQuantity).formatNumber()
+                newPurchasePrice = String(format: "%g", currentPurchasePrice).formatNumber()
             }
         }
     }
